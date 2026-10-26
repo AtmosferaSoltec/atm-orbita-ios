@@ -46,11 +46,16 @@ struct ScreenScaffold<Header: View, Content: View, Footer: View>: View {
 struct ScreenHeader<Action: View>: View {
     let title: String
     var overline: String?
+    var subtitle: String?
     let action: Action
 
-    init(title: String, overline: String? = nil, @ViewBuilder action: () -> Action = { EmptyView() }) {
+    init(
+        title: String, overline: String? = nil, subtitle: String? = nil,
+        @ViewBuilder action: () -> Action = { EmptyView() }
+    ) {
         self.title = title
         self.overline = overline
+        self.subtitle = subtitle
         self.action = action()
     }
 
@@ -64,6 +69,13 @@ struct ScreenHeader<Action: View>: View {
                     .font(OFont.headlineMedium)
                     .foregroundStyle(Palette.ink)
                     .accessibilityAddTraits(.isHeader)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(OFont.bodyMedium)
+                        .foregroundStyle(Palette.muted)
+                        .padding(.top, 2)
+                        .padding(.trailing, 12)
+                }
             }
             Spacer(minLength: 8)
             action
@@ -120,17 +132,19 @@ struct CircleIconButton: View {
     let label: String
     var container: Color = Palette.surface
     var tint: Color = Palette.ink
+    var enabled = true
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(enabled ? tint : tint.opacity(0.3))
                 .frame(width: 48, height: 48)
                 .background(container, in: Circle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 }
@@ -227,14 +241,57 @@ extension EdgeInsets {
     }
 }
 
-/// Dark highlighted card (savings total, credit to pay).
+/// Savings cards are violet-blue-teal with white text; credit is yellow-amber with dark text.
+enum HeroTone {
+    case savings, credit
+
+    var gradient: [Color] {
+        switch self {
+        case .savings: [Palette.heroGradientStart, Palette.heroGradientMid, Palette.heroGradientEnd]
+        case .credit: [Palette.creditGradientStart, Palette.creditGradientMid, Palette.creditGradientEnd]
+        }
+    }
+
+    var glow: Color { self == .savings ? Palette.heroGlow : .white }
+}
+
+/// Highlighted card (savings total, credit to pay) over a three-color gradient.
+/// `scrim` darkens it from top (0 %) to bottom (80 % black); the screens use it on every tone so
+/// the cards look alike, and it is what lets white text sit on the yellow credit tone.
 struct HeroCard<Content: View>: View {
+    var tone: HeroTone = .savings
+    var scrim = false
     @ViewBuilder let content: Content
 
     var body: some View {
-        OrbitaCard(radius: Radius.heroCard, container: Palette.hero, padding: .all(20)) { content }
+        VStack(alignment: .leading, spacing: 0) { content }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                // Diagonal gradient plus two soft glows for depth.
+                GeometryReader { proxy in
+                    ZStack {
+                        LinearGradient(colors: tone.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        RadialGradient(
+                            colors: [tone.glow.opacity(0.30), .clear],
+                            center: UnitPoint(x: 0.95, y: 0), startRadius: 0, endRadius: proxy.size.width * 0.7
+                        )
+                        RadialGradient(
+                            colors: [tone.gradient[0].opacity(0.55), .clear],
+                            center: UnitPoint(x: 0, y: 1), startRadius: 0, endRadius: proxy.size.width * 0.7
+                        )
+                        if scrim {
+                            LinearGradient(colors: [.clear, Color.black.opacity(0.80)], startPoint: .top, endPoint: .bottom)
+                        }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Radius.heroCard, style: .continuous))
     }
 }
+
+/// Translucent surface used inside a `HeroCard`.
+let heroGlass = Color.white.opacity(0.14)
 
 struct CardDivider: View {
     var color: Color = Palette.dividerSoft
@@ -440,6 +497,8 @@ struct PillButton: View {
     var systemImage: String?
     var container: Color = Palette.primarySoft
     var content: Color = Palette.primary
+    /// Takes all the width it is given (two buttons side by side).
+    var fill = false
     var action: () -> Void = {}
 
     var body: some View {
@@ -452,7 +511,7 @@ struct PillButton: View {
             }
             .foregroundStyle(content)
             .padding(.horizontal, 16)
-            .frame(minHeight: 44)
+            .frame(maxWidth: fill ? .infinity : nil, minHeight: 44)
             .background(container, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -611,6 +670,10 @@ struct OrbitaTextArea: View {
     var placeholder = ""
     var maxLength: Int?
     var minHeight: CGFloat = 96
+    /// Called when the box gets the focus (the amount keypad closes then).
+    var onFocus: (() -> Void)?
+
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
@@ -628,6 +691,10 @@ struct OrbitaTextArea: View {
                     .foregroundStyle(Palette.ink)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: minHeight)
+                    .focused($focused)
+                    .onChange(of: focused) { _, isFocused in
+                        if isFocused { onFocus?() }
+                    }
                     .onChange(of: text) { _, newValue in
                         if let maxLength, newValue.count > maxLength {
                             text = String(newValue.prefix(maxLength))
@@ -718,11 +785,15 @@ struct LabelValueRow: View {
 
 struct HeroLabel: View {
     let text: String
+    var color: Color = .white
 
-    init(_ text: String) { self.text = text }
+    init(_ text: String, color: Color = .white) {
+        self.text = text
+        self.color = color
+    }
 
     var body: some View {
-        Text(text).font(OFont.labelMedium).foregroundStyle(Palette.onHeroMuted)
+        Text(text).font(OFont.labelMedium).foregroundStyle(color)
     }
 }
 

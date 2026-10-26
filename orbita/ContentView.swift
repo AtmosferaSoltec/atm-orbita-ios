@@ -1,37 +1,54 @@
 import SwiftUI
 
-/// Navigable mockup of every screen, fed with sample data and in-memory state.
-/// Signed out: Iniciar sesión ⇄ Registro. Signed in: Inicio · Cuentas · [ + ] · Reportes · Crédito.
+/// Root of the app: login or sign-up without a session, the tabs with one. Every screen reads its
+/// data from the repositories of `AppModel.env`; whether those are the demo data or the API is
+/// decided in `AppEnvironment`.
 struct ContentView: View {
-    @State private var model = AppModel()
+    @Environment(AppModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var wasInBackground = false
 
     var body: some View {
-        Group {
-            if model.isLoggedIn {
-                MainView()
-            } else {
-                AuthView(
-                    register: model.showsRegister,
-                    onSubmit: { model.login() },
-                    onSwitch: { model.showsRegister.toggle() }
-                )
+        ZStack {
+            Palette.background.ignoresSafeArea()
+            switch app.session {
+            // The stored session is being restored: nothing to show yet.
+            case .loading:
+                EmptyView()
+            case .signedOut:
+                AuthFlowView()
+            case .signedIn:
+                MainFlow()
+            }
+            ToastHost()
+        }
+        .preferredColorScheme(.light)
+        .onChange(of: scenePhase) { _, phase in
+            // Back from the background: the data may have changed on another device meanwhile.
+            switch phase {
+            case .background:
+                wasInBackground = true
+            case .active:
+                if wasInBackground { app.refreshAll() }
+                wasInBackground = false
+            default:
+                break
             }
         }
-        .environment(model)
-        .preferredColorScheme(.light)
     }
 }
 
-private struct MainView: View {
-    @Environment(AppModel.self) private var model
+/// The tabs, and the back stack of screens pushed over them.
+private struct MainFlow: View {
+    @Environment(AppModel.self) private var app
 
     var body: some View {
-        @Bindable var model = model
+        @Bindable var app = app
 
-        NavigationStack(path: $model.path) {
+        NavigationStack(path: $app.path) {
             VStack(spacing: 0) {
                 Group {
-                    switch model.tab {
+                    switch app.tab {
                     case .home: HomeView()
                     case .accounts: AccountsView()
                     case .reports: ReportsView()
@@ -40,9 +57,12 @@ private struct MainView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 OrbitaBottomBar(
-                    current: model.tab,
-                    onSelect: { model.tab = $0 },
-                    onAdd: { model.flow = .newEntry(credit: false, startsAsTransfer: false) }
+                    current: app.tab,
+                    onSelect: {
+                        app.reportFocus = nil
+                        app.tab = $0
+                    },
+                    onAdd: { app.push(.movementForm()) }
                 )
             }
             .background(Palette.background.ignoresSafeArea())
@@ -52,36 +72,29 @@ private struct MainView: View {
                     .toolbar(.hidden, for: .navigationBar)
             }
         }
-        .fullScreenCover(item: $model.flow) { flow in
-            flowView(for: flow)
-                .environment(model)
-        }
     }
 
     @ViewBuilder
     private func destination(for route: Route) -> some View {
         switch route {
-        case .settings: SettingsView()
-        case .movements: MovementsView()
-        case .categories: CategoriesView()
-        case .categoryForm(let category, let kind): CategoryFormView(category: category, initialKind: kind)
-        case .accountEdit(let account): AccountFormView(account: account, onClose: model.pop, onSave: model.pop)
-        case .payCredit(let purchase): PayCreditView(purchase: purchase)
-        }
-    }
-
-    @ViewBuilder
-    private func flowView(for flow: Flow) -> some View {
-        let close = { model.flow = nil }
-        switch flow {
-        case .newEntry(let credit, let startsAsTransfer):
-            NewEntryFlowView(credit: credit, startsAsTransfer: startsAsTransfer, onClose: close)
-        case .editMovement(let movement):
-            MovementFormView(editing: movement, onClose: close, onSave: close, onDelete: close)
-        case .editTransfer(let transfer):
-            TransferFormView(editing: transfer, onClose: close, onSave: close, onDelete: close)
-        case .newAccount:
-            AccountFormView(account: nil, onClose: close, onSave: close)
+        case .settings:
+            SettingsView()
+        case .movements:
+            MovementsView()
+        case .movementForm(let editing, let credit, let purchase):
+            MovementFormScreen(editing: editing, initialCredit: credit, editingPurchase: purchase)
+        case .transferForm(let editing):
+            TransferFormScreen(editing: editing)
+        case .payCredit(let purchase):
+            PayCreditScreen(purchase: purchase)
+        case .creditCardForm(let card):
+            CreditCardFormScreen(card: card)
+        case .accountForm(let account):
+            AccountFormView(account: account)
+        case .categories:
+            CategoriesView()
+        case .categoryForm(let category, let kind):
+            CategoryFormScreen(category: category, initialKind: kind)
         }
     }
 }
@@ -98,4 +111,6 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     }
 }
 
-#Preview { ContentView() }
+#Preview {
+    ContentView().environment(AppModel(env: .demo()))
+}

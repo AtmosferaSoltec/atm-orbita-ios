@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct orbitaApp: App {
+    @State private var model = AppModel(env: .make())
+
     init() {
         FontLoader.registerManrope()
     }
@@ -16,6 +18,7 @@ struct orbitaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(model)
         }
     }
 }
