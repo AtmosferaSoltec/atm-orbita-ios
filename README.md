@@ -12,7 +12,7 @@ Todo el trabajo va en `develop`. `main` guarda lo que ya funciona; pasar a `main
 
 ## Estado
 
-Replica toda la app de Android (26 oct 2026): sesión (registro, ingreso, recuperar contraseña con código de 6 dígitos, cerrar sesión, eliminar cuenta), Inicio, Cuentas, Movimientos (ingreso, egreso, compra con tarjeta, transferencia), Reportes (mes, año, rango), Crédito (tarjetas, compras pendientes, pagar), Categorías y Ajustes (monedas y tipo de cambio).
+Replica toda la app de Android (26 oct 2026), conectada al servidor real: sesión (registro, ingreso, recuperar contraseña con código de 6 dígitos, cerrar sesión, eliminar cuenta), Inicio, Cuentas, Movimientos (ingreso, egreso, compra con tarjeta, transferencia), Reportes (mes, año, rango), Crédito (tarjetas, compras pendientes, pagar), Categorías y Ajustes (monedas y tipo de cambio).
 
 > **Pendiente de verificar:** este código se escribió en una máquina sin Xcode, así que **aún no se compiló**. El primer paso en un Mac es abrir `orbita.xcodeproj`, compilar y corregir lo que salga.
 
@@ -61,12 +61,12 @@ Los repositorios no guardan nada: devuelven la lectura actual. Cada pantalla tie
 
 Requiere Xcode con soporte para el SDK que indica el proyecto.
 
-- **Modo demo (sin API):** abrir en Xcode y correr. Cualquier correo y contraseña entran; los datos son los de ejemplo y se pierden al cerrar. En demo "hoy" es el 2 oct 2026.
-- **Con el API (Debug):** levantar el API (ver `atm-orbita-api/docs/plans/00-foundations.md`) y en el esquema de Xcode (*Edit Scheme → Run → Arguments → Environment Variables*) agregar:
+- **Por defecto usa el servidor real.** Abrir en Xcode y correr (Debug o Release) habla con `https://orbita-api.atmosferast.com/api/v1` por HTTPS: registro, inicio de sesión y todos los datos son de verdad. Para probar sin ensuciar el servidor, usa una cuenta de prueba.
+- **Con otro API (Debug):** en el esquema de Xcode (*Edit Scheme → Run → Arguments → Environment Variables*) agregar:
 
   ```
   API_BASE_URL = http://192.168.x.x:3001/api/v1     # IP de la PC en la red local
   ```
 
-  El HTTP sin cifrar solo se permite en Debug y solo a la red local (`Config/Debug-Info.plist`).
-- **Release** siempre usa `https://orbita-api.atmosferast.com/api/v1`.
+  Para levantar el API, ver `atm-orbita-api/docs/plans/00-foundations.md`. El HTTP sin cifrar solo se permite en Debug y solo a la red local (`Config/Debug-Info.plist`).
+- **Modo demo (sin servidor, solo Debug):** agregar la variable `ORBITA_DEMO = 1` al esquema. Cualquier correo y contraseña entran; los datos son los de ejemplo y se pierden al cerrar. En demo "hoy" es el 2 oct 2026.
