@@ -33,8 +33,12 @@ extension AppConfig {
         return URL(string: authProductionURL)
     }
 
+    /// Google sign-in is built but off for the first store release: no client ID, no button.
+    static let googleSignInEnabled = false
+
     /// The iOS OAuth client for Google sign-in (Info.plist key `GoogleClientID`); nil hides the button.
     static var googleClientId: String? {
+        guard googleSignInEnabled else { return nil }
         let id = Bundle.main.object(forInfoDictionaryKey: "GoogleClientID") as? String
         return id?.isEmpty == false ? id : nil
     }

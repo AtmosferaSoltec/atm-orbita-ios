@@ -7,6 +7,8 @@ struct ContentView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var scenePhase
     @State private var wasInBackground = false
+    /// The introduction is shown once, before the first login or sign-up.
+    @AppStorage("onboarded") private var onboarded = false
 
     var body: some View {
         ZStack {
@@ -16,7 +18,11 @@ struct ContentView: View {
             case .loading:
                 EmptyView()
             case .signedOut:
-                AuthFlowView()
+                if onboarded {
+                    AuthFlowView()
+                } else {
+                    OnboardingView { onboarded = true }
+                }
             case .signedIn:
                 MainFlow()
             }
