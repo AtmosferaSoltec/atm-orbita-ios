@@ -16,9 +16,13 @@ struct AppEnvironment {
     /// In demo mode no email can arrive: the code screen says any 6 digits work.
     let isDemo: Bool
 
-    static func make(apiBaseURL: URL? = AppConfig.apiBaseURL) -> AppEnvironment {
-        guard let apiBaseURL else { return demo() }
-        let session = ApiSession(client: ApiClient(baseURL: apiBaseURL), tokens: KeychainTokenStore())
+    static func make(apiBaseURL: URL? = AppConfig.apiBaseURL, authBaseURL: URL? = AppConfig.authBaseURL) -> AppEnvironment {
+        guard let apiBaseURL, let authBaseURL else { return demo() }
+        let session = ApiSession(
+            client: ApiClient(baseURL: apiBaseURL),
+            authClient: ApiClient(baseURL: authBaseURL),
+            tokens: KeychainTokenStore()
+        )
         return AppEnvironment(
             auth: RemoteAuthRepository(api: session),
             accounts: RemoteAccountsRepository(api: session),

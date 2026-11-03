@@ -2,18 +2,20 @@ import Foundation
 
 // Bodies of the API (atm-orbita-api). The JSON coders convert camelCase ⇄ snake_case.
 
-// MARK: - Auth
+// MARK: - Auth (atm-auth-api: flat JSON, snake_case)
+
+/// The system name the auth service knows this app by.
+let authSystem = "orbita"
 
 struct RegisterRequest: Encodable {
-    let name: String
+    let system = authSystem
     let email: String
+    let fullName: String
     let password: String
-    let mainCurrency: String
-    /// IANA zone of the phone: the API computes "today" with it.
-    let timezone: String
 }
 
 struct LoginRequest: Encodable {
+    let system = authSystem
     let email: String
     let password: String
 }
@@ -22,28 +24,19 @@ struct RefreshRequest: Encodable {
     let refreshToken: String
 }
 
-struct UserDto: Decodable {
-    let id: String
-    let email: String
-}
-
+/// The tokens of login, register, refresh and Google. The refresh token rotates on every use.
 struct TokensDto: Decodable {
     let accessToken: String
-    let accessTokenExpiresIn: Int
     let refreshToken: String
+    var tokenType: String?
+    var expiresIn: Int?
+    var refreshExpiresIn: Int?
+    var sessionMode: String?
 }
 
-struct AuthResponse: Decodable {
-    let user: UserDto
-    let tokens: TokensDto
-}
-
-struct RefreshResponse: Decodable {
-    let tokens: TokensDto
-}
-
-/// Body of the three steps of recovering the password; each sends what it has so far.
+/// Body of the steps of recovering the password; each sends what it has so far.
 struct ResetRequest: Encodable {
+    var system: String?
     let email: String
     var code: String?
     var newPassword: String?
@@ -54,22 +47,17 @@ struct DeleteAccountRequest: Encodable {
     let password: String
 }
 
-/// Sign in with Google: an empty client ID means it is off.
-struct GoogleConfigDto: Decodable {
-    var clientId: String?
-}
-
 struct GoogleChallengeDto: Decodable {
     let nonce: String
+    var expiresIn: Int?
 }
 
 struct EmptyBody: Encodable {}
 
 struct GoogleSignInRequest: Encodable {
-    let nonce: String
+    let system = authSystem
     let credential: String
-    let mainCurrency: String
-    let timezone: String
+    let nonce: String
     /// Only to link Google to an account that already has this email.
     var password: String?
 }

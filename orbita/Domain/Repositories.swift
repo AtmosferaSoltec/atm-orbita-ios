@@ -11,7 +11,6 @@ enum DataError: Hashable {
     case network
     case invalidCredentials
     case emailAlreadyRegistered
-    case emailNotConfirmed
     case notFound
     /// Another category of the same kind already has that name (ignoring case and accents).
     case nameTaken
@@ -40,6 +39,14 @@ enum DataError: Hashable {
     case googleLinkRequired
     /// The account already has another Google account linked.
     case googleIdentityConflict
+    /// The Google account is not linked to this account (deleting an account with Google).
+    case googleNotLinked
+    /// The person has no access to Orbita in the auth service.
+    case noAccess
+    /// Orbita does not accept new sign-ups right now.
+    case signupClosed
+    /// The apps linked to the account could not clean up their data; nothing was deleted.
+    case accountCleanupFailed
     case unknown
 }
 
@@ -79,9 +86,9 @@ protocol AuthRepository: AnyObject {
 
     func signIn(_ credentials: Credentials) async throws
 
-    /// `name` is how the app calls the user (up to 60 characters). `mainCurrency` is the one
-    /// they picked on sign-up: their profile and their first account ("Efectivo") start on it.
-    func signUp(name: String, credentials: Credentials, mainCurrency: String) async throws
+    /// `name` is how the app calls the user (up to 60 characters); the auth service stores it as
+    /// the full name. The profile (PEN, the phone's time zone) is created by Orbita.
+    func signUp(name: String, credentials: Credentials) async throws
     func signOut() async
 
     /// Asks for the email with a 6-digit code to choose a new password. It succeeds whether the
@@ -95,16 +102,16 @@ protocol AuthRepository: AnyObject {
     /// Sets the new password with the code and ends every session; it does not sign in.
     func resetPassword(email: String, code: String, newPassword: String) async throws
 
-    /// The Google client the API accepts tokens for, or nil when it offers no Google sign-in.
+    /// The Google client to ask tokens for, or nil when the app has no Google sign-in configured.
     func googleClientId() async throws -> String?
 
     /// A single-use value Google must sign into its token, so a stolen token cannot be replayed.
     func googleNonce() async throws -> String
 
-    /// Signs in with a Google ID token, creating the account (on `mainCurrency`) the first time.
+    /// Signs in with a Google ID token, creating the account the first time.
     /// An account that already has that email fails with `googleLinkRequired` until its
     /// `password` is given once, to link Google to it.
-    func signInWithGoogle(idToken: String, nonce: String, mainCurrency: String, password: String?) async throws
+    func signInWithGoogle(idToken: String, nonce: String, password: String?) async throws
 
     /// Deletes the user and every piece of their data for good, and ends the session. It asks
     /// for the password again: an unlocked phone is not enough to delete an account.

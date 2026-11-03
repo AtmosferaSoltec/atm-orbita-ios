@@ -1,6 +1,6 @@
 import Foundation
 
-// The repositories against the API (atm-orbita-api). They keep nothing: REST does not tell when
+// The repositories against the APIs: data on atm-orbita-api, authentication on atm-auth-api. They keep nothing: REST does not tell when
 // something changed, so the stores read again after every write.
 
 extension ApiSession {
@@ -31,43 +31,47 @@ final class RemoteAuthRepository: AuthRepository {
 
     var initialSession: SessionState { api.initialState }
 
+    // Every call below goes to atm-auth-api (`api.authClient`).
+
     func signIn(_ credentials: Credentials) async throws {
         let email = credentials.email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let response = try await api.client.send(
-            try .send("POST", "auth/login", LoginRequest(email: email, password: credentials.password))
+        let response = try await api.authClient.send(
+            try .send("POST", "login", LoginRequest(email: email, password: credentials.password))
         )
-        let auth = try response.requireSuccess().decode(AuthResponse.self)
-        api.start(email: auth.user.email, received: auth.tokens)
+        api.start(email: email, received: try response.requireSuccess().decodeFlat(TokensDto.self))
     }
 
-    func signUp(name: String, credentials: Credentials, mainCurrency: String) async throws {
+    func signUp(name: String, credentials: Credentials) async throws {
+        let email = credentials.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = RegisterRequest(
-            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-            email: credentials.email.trimmingCharacters(in: .whitespacesAndNewlines),
-            password: credentials.password,
-            mainCurrency: mainCurrency,
-            timezone: TimeZone.current.identifier
+            email: email,
+            // The auth service needs a full name: without one, the part of the email before "@".
+            fullName: fullName.isEmpty ? String(email.prefix { $0 != "@" }) : fullName,
+            password: credentials.password
         )
-        let response = try await api.client.send(try .send("POST", "auth/register", request))
-        let auth = try response.requireSuccess().decode(AuthResponse.self)
-        api.start(email: auth.user.email, received: auth.tokens)
+        let response = try await api.authClient.send(try .send("POST", "register", request))
+        api.start(email: email, received: try response.requireSuccess().decodeFlat(TokensDto.self))
+        // Orbita creates the profile (PEN) on the first request, with America/Lima; the phone's
+        // zone is sent right away. The main currency is chosen later in Ajustes (it needs a rate).
+        _ = try? await api.call(try .send("PATCH", "settings", UpdateSettingsRequest(timezone: TimeZone.current.identifier)))
     }
 
     /// Leaving must always work, even offline: the phone forgets the session first, then the
-    /// API is told so the session can no longer be renewed anywhere.
+    /// auth service is told so the session can no longer be renewed anywhere.
     func signOut() async {
         let refreshToken = api.storedRefreshToken()
         api.end()
-        if let refreshToken, let request = try? ApiRequest.send("POST", "auth/logout", RefreshRequest(refreshToken: refreshToken)) {
-            _ = try? await api.client.send(request)
+        if let refreshToken, let request = try? ApiRequest.send("POST", "logout", RefreshRequest(refreshToken: refreshToken)) {
+            _ = try? await api.authClient.send(request)
         }
     }
 
     // Recovering the password: public calls, no session involved.
 
     func requestPasswordReset(email: String) async throws {
-        let body = ResetRequest(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
-        try await api.client.send(try .send("POST", "auth/forgot-password", body)).requireSuccess()
+        let body = ResetRequest(system: authSystem, email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+        try await api.authClient.send(try .send("POST", "password/forgot", body)).requireSuccess()
     }
 
     func verifyResetCode(email: String, code: String) async throws {
@@ -75,47 +79,53 @@ final class RemoteAuthRepository: AuthRepository {
             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
             code: code.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-        try await api.client.send(try .send("POST", "auth/verify-reset-code", body)).requireSuccess()
+        try await api.authClient.send(try .send("POST", "password/verify", body)).requireSuccess()
     }
 
     func resetPassword(email: String, code: String, newPassword: String) async throws {
         let body = ResetRequest(
+            system: authSystem,
             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
             code: code.trimmingCharacters(in: .whitespacesAndNewlines),
             newPassword: newPassword
         )
-        try await api.client.send(try .send("POST", "auth/reset-password", body)).requireSuccess()
+        try await api.authClient.send(try .send("POST", "password/reset", body)).requireSuccess()
     }
 
-    // Signing in with Google, the native way: the nonce and the tokens travel in the body.
+    // Signing in with Google, the native way: the nonce and the Google token travel in the body.
     // Google itself is asked by the screen.
 
-    func googleClientId() async throws -> String? {
-        let response = try await api.client.send(.get("auth/google/config"))
-        let id = try response.requireSuccess().decode(GoogleConfigDto.self).clientId ?? ""
-        return id.isEmpty ? nil : id
-    }
+    /// The auth service has no config endpoint: the iOS client ID lives in the app's Info.plist.
+    func googleClientId() async throws -> String? { AppConfig.googleClientId }
 
     func googleNonce() async throws -> String {
-        let response = try await api.client.send(try .send("POST", "auth/google/challenge", EmptyBody()))
-        return try response.requireSuccess().decode(GoogleChallengeDto.self).nonce
+        let response = try await api.authClient.send(try .send("POST", "google/challenge", EmptyBody()))
+        return try response.requireSuccess().decodeFlat(GoogleChallengeDto.self).nonce
     }
 
-    func signInWithGoogle(idToken: String, nonce: String, mainCurrency: String, password: String?) async throws {
-        let body = GoogleSignInRequest(
-            nonce: nonce, credential: idToken, mainCurrency: mainCurrency,
-            timezone: TimeZone.current.identifier, password: password
-        )
-        let response = try await api.client.send(try .send("POST", "auth/google", body))
-        let auth = try response.requireSuccess().decode(AuthResponse.self)
-        api.start(email: auth.user.email, received: auth.tokens)
+    func signInWithGoogle(idToken: String, nonce: String, password: String?) async throws {
+        let body = GoogleSignInRequest(credential: idToken, nonce: nonce, password: password)
+        let response = try await api.authClient.send(try .send("POST", "google", body))
+        let tokens = try response.requireSuccess().decodeFlat(TokensDto.self)
+        api.start(email: Self.emailClaim(ofJwt: idToken) ?? "", received: tokens)
+    }
+
+    /// The `email` claim of a Google ID token (only to show who is signed in; the server checks it).
+    private static func emailClaim(ofJwt jwt: String) -> String? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var base64 = parts[1].replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64 += "=" }
+        guard let data = Data(base64Encoded: base64),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return claims["email"] as? String
     }
 
     /// Deletes the account and all its data for good. A wrong password keeps the session; once
     /// deleted, the phone forgets it and goes back to the login form.
     func deleteAccount(password: String) async throws {
-        let response = try await api.authorized(try .send("DELETE", "me", DeleteAccountRequest(password: password)))
-        // Here the API's "wrong email or password" can only be the password.
+        let response = try await api.authorized(try .send("DELETE", "account", DeleteAccountRequest(password: password)), toAuth: true)
+        // Here the auth service's "invalid_credentials" can only be the password.
         if response.isWrongPassword { throw DataException(.wrongPassword) }
         try response.requireSuccess()
         api.end()

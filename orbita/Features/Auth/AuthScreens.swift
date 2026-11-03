@@ -3,16 +3,14 @@ import SwiftUI
 /// Login (`register` = false) or sign-up.
 struct AuthScreen: View {
     let register: Bool
-    let onSubmit: (_ name: String, _ email: String, _ password: String, _ mainCurrency: String) -> Void
+    let onSubmit: (_ name: String, _ email: String, _ password: String) -> Void
     let onSwitch: () -> Void
     var error: String?
     /// Good news shown on the login form, e.g. after choosing a new password.
     var notice: String?
-    /// The currency offered on sign-up: the one of the phone's region, or soles.
-    var defaultCurrency = PEN
     var onForgotPassword: () -> Void = {}
-    /// Shows "Continuar con Google" (nil hides it); a new account starts on the currency.
-    var onGoogle: ((_ mainCurrency: String) -> Void)?
+    /// Shows "Continuar con Google" (nil hides it).
+    var onGoogle: (() -> Void)?
     var busy = false
     /// The Google email already has an account: its password is asked once to link it.
     var googleLinking = false
@@ -22,17 +20,15 @@ struct AuthScreen: View {
     @State private var name = ""
     @State private var email = ""
     @State private var password = ""
-    @State private var currency: String
 
     init(
         register: Bool,
-        onSubmit: @escaping (String, String, String, String) -> Void,
+        onSubmit: @escaping (String, String, String) -> Void,
         onSwitch: @escaping () -> Void,
         error: String? = nil,
         notice: String? = nil,
-        defaultCurrency: String = PEN,
         onForgotPassword: @escaping () -> Void = {},
-        onGoogle: ((String) -> Void)? = nil,
+        onGoogle: (() -> Void)? = nil,
         busy: Bool = false,
         googleLinking: Bool = false,
         onLinkGoogle: @escaping (String) -> Void = { _ in },
@@ -43,14 +39,12 @@ struct AuthScreen: View {
         self.onSwitch = onSwitch
         self.error = error
         self.notice = notice
-        self.defaultCurrency = defaultCurrency
         self.onForgotPassword = onForgotPassword
         self.onGoogle = onGoogle
         self.busy = busy
         self.googleLinking = googleLinking
         self.onLinkGoogle = onLinkGoogle
         self.onCancelGoogleLink = onCancelGoogleLink
-        _currency = State(initialValue: defaultCurrency)
     }
 
     var body: some View {
@@ -77,18 +71,6 @@ struct AuthScreen: View {
             PasswordField(text: $password)
             if register {
                 HintText("Mínimo 8 caracteres.").padding(.top, 8)
-
-                // The user's main currency: their first account ("Efectivo") starts on it.
-                FieldLabel("Moneda")
-                DropdownField(
-                    options: supportedCurrencies,
-                    selected: currencyInfo(currency),
-                    onSelect: { currency = $0.code },
-                    label: { $0.label },
-                    detail: { $0.code },
-                    leading: { _ in EmptyView() }
-                )
-                HintText("Es la moneda de tus cuentas. Podrás cambiarla después en Ajustes.").padding(.top, 8)
             } else {
                 HStack {
                     Spacer()
@@ -111,14 +93,14 @@ struct AuthScreen: View {
             }
 
             PrimaryButton(title: register ? "Crear cuenta" : "Ingresar") {
-                onSubmit(name, email, password, currency)
+                onSubmit(name, email, password)
             }
             .padding(.top, 24)
 
             if let onGoogle {
                 GoogleSection(
                     busy: busy, linking: googleLinking,
-                    onContinue: { onGoogle(currency) }, onLink: onLinkGoogle, onCancelLink: onCancelGoogleLink
+                    onContinue: onGoogle, onLink: onLinkGoogle, onCancelLink: onCancelGoogleLink
                 )
             }
 

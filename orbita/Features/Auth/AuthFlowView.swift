@@ -14,11 +14,11 @@ struct AuthFlowView: View {
     private var errorText: String? { app.authError?.text }
 
     /// "Continuar con Google" only when the API offers it and the app can ask Google for a token.
-    private var googleAction: ((String) -> Void)? {
+    private var googleAction: (() -> Void)? {
         guard app.googleClientId != nil else { return nil }
-        return { currency in
+        return {
             passwordChanged = false
-            app.continueWithGoogle(mainCurrency: currency)
+            app.continueWithGoogle()
         }
     }
 
@@ -33,10 +33,10 @@ struct AuthFlowView: View {
             let register = step == .register
             AuthScreen(
                 register: register,
-                onSubmit: { name, email, password, currency in
+                onSubmit: { name, email, password in
                     passwordChanged = false
                     if register {
-                        app.signUp(name: name, email: email, password: password, mainCurrency: currency)
+                        app.signUp(name: name, email: email, password: password)
                     } else {
                         app.signIn(email: email, password: password)
                     }
@@ -47,7 +47,6 @@ struct AuthFlowView: View {
                 },
                 error: errorText,
                 notice: passwordChanged ? "Tu contraseña se cambió. Inicia sesión con la nueva." : nil,
-                defaultCurrency: defaultCurrencyFor(),
                 onForgotPassword: { go(.forgot) },
                 onGoogle: googleAction,
                 busy: app.authBusy,

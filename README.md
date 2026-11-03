@@ -1,6 +1,6 @@
 # Orbita · App iOS
 
-App **iOS nativa** (Swift + SwiftUI) de Orbita: ingresos y egresos personales por cuenta, en varias monedas, con transferencias, compras con tarjeta de crédito pendientes de pago y reportes. Es la misma app que Android (`atm-orbita-android`) y habla con el mismo API (`atm-orbita-api`).
+App **iOS nativa** (Swift + SwiftUI) de Orbita: ingresos y egresos personales por cuenta, en varias monedas, con transferencias, compras con tarjeta de crédito pendientes de pago y reportes. Es la misma app que Android (`atm-orbita-android`). Los datos van a `atm-orbita-api`; toda la autenticación (registro, ingreso, renovar sesión, recuperar contraseña, eliminar cuenta, Google) va a `atm-auth-api`, y el access token que emite se envía como Bearer a `atm-orbita-api`.
 
 - Bundle id: `com.atmosferast.orbita`
 - La **especificación funcional** es `atm-orbita-android/docs/ORBITA_SPEC.md` (pantallas, reglas, textos, cálculos y datos de ejemplo). Si el código y la spec no coinciden, manda el código de Android.
@@ -18,7 +18,7 @@ Replica toda la app de Android (26 oct 2026), conectada al servidor real: sesió
 
 Pendiente respecto a Android:
 
-- **Continuar con Google.** El flujo está hecho (`AppModel.continueWithGoogle`, vincular con contraseña), pero no hay proveedor de tokens (`GoogleTokenProvider`), así que el botón no se muestra. Hace falta el SDK de Google Sign-In (Swift Package), un cliente OAuth de tipo iOS y que el API acepte ese `audience` (hoy solo verifica el cliente web).
+- **Continuar con Google.** El flujo está hecho (`AppModel.continueWithGoogle`, vincular con contraseña), pero no hay proveedor de tokens (`GoogleTokenProvider`), así que el botón no se muestra. Hace falta el SDK de Google Sign-In (Swift Package) y un cliente OAuth de tipo iOS (clave `GoogleClientID` del Info.plist, que `atm-auth-api` debe aceptar en `GOOGLE_CLIENT_IDS`).
 - **Pruebas unitarias.** Android tiene pruebas de reglas de dinero, tipo de cambio, nombres y repositorios; aquí falta crear el target de pruebas.
 - **Textos en String Catalog.** Los textos están escritos en los propios archivos Swift (es-PE).
 - **Iconos propios.** Se usan SF Symbols en lugar de los iconos de línea de Android.
@@ -45,9 +45,9 @@ Reglas que no cambian (iguales a Android):
 2. El saldo no se guarda: lo calcula el API (y `Data/Demo` igual).
 3. La app nunca envía un id de usuario: solo su token. Los ids de lo que se crea los genera la app (UUID).
 4. Ningún secreto en la app ni en el repo. El refresh token vive en el llavero (`ThisDeviceOnly`, fuera de los respaldos); el access token solo en memoria.
-5. "Hoy" lo decide el API con la zona horaria del perfil (la app envía `TimeZone.current` al registrarse).
+5. "Hoy" lo decide el API con la zona horaria del perfil (la app envía `TimeZone.current` con `PATCH /settings` justo después de registrarse; el perfil nace en PEN / America/Lima).
 6. Sin tipo de cambio no hay otra moneda.
-7. Los mensajes de error los elige la app por el `code` del API (`UiMessage`); el `message` del API no se muestra.
+7. Los mensajes de error los elige la app por el `code` del API (`atm-auth-api` usa `snake_case` en minúsculas; `atm-orbita-api`, `SCREAMING_SNAKE`) (`UiMessage`); el `message` del API no se muestra.
 
 ### Cómo se leen y escriben los datos
 
@@ -61,11 +61,12 @@ Los repositorios no guardan nada: devuelven la lectura actual. Cada pantalla tie
 
 Requiere Xcode con soporte para el SDK que indica el proyecto.
 
-- **Por defecto usa el servidor real.** Abrir en Xcode y correr (Debug o Release) habla con `https://orbita-api.atmosferast.com/api/v1` por HTTPS: registro, inicio de sesión y todos los datos son de verdad. Para probar sin ensuciar el servidor, usa una cuenta de prueba.
+- **Por defecto usa el servidor real.** Abrir en Xcode y correr (Debug o Release) habla con `https://orbita-api.atmosferast.com/api/v1` (datos) y `https://auth.atmosferast.com/v1` (autenticación) por HTTPS: registro, inicio de sesión y todos los datos son de verdad. Para probar sin ensuciar el servidor, usa una cuenta de prueba.
 - **Con otro API (Debug):** en el esquema de Xcode (*Edit Scheme → Run → Arguments → Environment Variables*) agregar:
 
   ```
-  API_BASE_URL = http://192.168.x.x:3001/api/v1     # IP de la PC en la red local
+  API_BASE_URL = http://192.168.x.x:3001/api/v1     # atm-orbita-api, IP de la PC en la red local
+  AUTH_API_BASE_URL = http://192.168.x.x:8080/v1    # atm-auth-api
   ```
 
   Para levantar el API, ver `atm-orbita-api/docs/plans/00-foundations.md`. El HTTP sin cifrar solo se permite en Debug y solo a la red local (`Config/Debug-Info.plist`).

@@ -67,9 +67,8 @@ final class DemoAuthRepository: AuthRepository {
         onSessionChange?(.signedIn(email: email.isEmpty ? SampleData.userEmail : email))
     }
 
-    // The sample data is the same for everyone, so the name and the currency picked on sign-up
-    // change nothing here; with the API the user starts with them.
-    func signUp(name: String, credentials: Credentials, mainCurrency: String) async throws {
+    // The sample data is the same for everyone, so the name picked on sign-up changes nothing here.
+    func signUp(name: String, credentials: Credentials) async throws {
         try await signIn(credentials)
     }
 
@@ -88,7 +87,7 @@ final class DemoAuthRepository: AuthRepository {
 
     func googleNonce() async throws -> String { throw DataException(.googleUnavailable) }
 
-    func signInWithGoogle(idToken: String, nonce: String, mainCurrency: String, password: String?) async throws {
+    func signInWithGoogle(idToken: String, nonce: String, password: String?) async throws {
         throw DataException(.googleUnavailable)
     }
 

@@ -49,14 +49,13 @@ final class AppModel {
     private(set) var authError: UiMessage?
     private(set) var authBusy = false
 
-    /// The Google client to ask tokens for; nil hides the button (demo, no provider, or the API has none).
+    /// The Google client to ask tokens for; nil hides the button (demo, no provider, or no client ID configured).
     private(set) var googleClientId: String?
 
     /// A Google token whose email already has an account: its password is asked once to link.
     private struct PendingGoogle {
         let idToken: String
         let nonce: String
-        let mainCurrency: String
     }
 
     private var pendingGoogle: PendingGoogle?
@@ -107,11 +106,11 @@ final class AppModel {
         }
     }
 
-    /// `name`: how the app calls the user. `mainCurrency`: the currency of their accounts.
-    func signUp(name: String, email: String, password: String, mainCurrency: String) {
+    /// `name`: how the app calls the user.
+    func signUp(name: String, email: String, password: String) {
         let credentials = Credentials(email: email, password: password)
         authAction(invalid: isDemo ? nil : (validateName(name) ?? credentials.validate())) {
-            try await self.env.auth.signUp(name: name, credentials: credentials, mainCurrency: mainCurrency)
+            try await self.env.auth.signUp(name: name, credentials: credentials)
         }
     }
 
@@ -196,15 +195,15 @@ final class AppModel {
     }
 
     /// Starts "Continuar con Google": the API's single-use nonce, then the provider for the
-    /// token, then the session. `mainCurrency` is only used if the account is new.
-    func continueWithGoogle(mainCurrency: String) {
+    /// token, then the session.
+    func continueWithGoogle() {
         guard let clientId = googleClientId, let provider = googleProvider else { return }
         pendingGoogle = nil
         authAction(invalid: nil) {
             let nonce = try await self.env.auth.googleNonce()
             switch await provider.idToken(clientId: clientId, nonce: nonce) {
             case .token(let idToken):
-                try await self.signInWithGoogle(PendingGoogle(idToken: idToken, nonce: nonce, mainCurrency: mainCurrency), password: nil)
+                try await self.signInWithGoogle(PendingGoogle(idToken: idToken, nonce: nonce), password: nil)
             case .cancelled:
                 break
             case .unavailable:
@@ -231,7 +230,7 @@ final class AppModel {
     private func signInWithGoogle(_ pending: PendingGoogle, password: String?) async throws {
         do {
             try await env.auth.signInWithGoogle(
-                idToken: pending.idToken, nonce: pending.nonce, mainCurrency: pending.mainCurrency, password: password
+                idToken: pending.idToken, nonce: pending.nonce, password: password
             )
             pendingGoogle = nil
         } catch let error as DataException {

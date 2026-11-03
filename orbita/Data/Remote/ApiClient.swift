@@ -1,8 +1,10 @@
 import Foundation
 
-// The HTTP client of the Orbita API. `baseURL` is e.g. `http://192.168.1.10:3001/api/v1`;
-// requests use paths relative to it (`auth/login`). Errors are not thrown for a status: they are
-// read from the response (`ApiResponse.requireSuccess`).
+// The HTTP client. There are two instances: one for atm-orbita-api (data, `{ "data": ... }`
+// bodies, e.g. `https://orbita-api.atmosferast.com/api/v1`) and one for atm-auth-api (every
+// authentication call, flat JSON bodies, e.g. `https://auth.atmosferast.com/v1`). Requests use
+// paths relative to the base URL (`login`). Errors are not thrown for a status: they are read
+// from the response (`ApiResponse.requireSuccess`).
 
 /// Fields the API adds later are ignored (Codable does it by default), so an older app keeps
 /// working. The API uses snake_case.
@@ -59,6 +61,7 @@ struct DataEnvelope<T: Decodable>: Decodable {
     let data: T
 }
 
+/// Both APIs answer errors as { "error": { "code", ... } }; `details` only comes from atm-orbita-api.
 private struct ApiErrorEnvelope: Decodable {
     struct Body: Decodable {
         var code: String?
@@ -73,11 +76,11 @@ private struct ApiErrorEnvelope: Decodable {
     var error: Body?
 }
 
-/// The domain error for a `code` of the API.
+/// The domain error for a `code`. atm-orbita-api sends SCREAMING_SNAKE codes; atm-auth-api sends
+/// lowercase snake_case ones.
 private func dataError(for code: String) -> DataError {
     switch code {
-    case "INVALID_CREDENTIALS": .invalidCredentials
-    case "EMAIL_ALREADY_REGISTERED": .emailAlreadyRegistered
+    // atm-orbita-api
     case "NOT_FOUND": .notFound
     case "CATEGORY_NAME_TAKEN": .nameTaken
     case "FX_RATE_NOT_CONFIGURED": .fxNotConfigured
@@ -86,12 +89,21 @@ private func dataError(for code: String) -> DataError {
     case "PAYMENT_EXPENSE_LOCKED": .paymentLocked
     case "SESSION_EXPIRED", "UNAUTHORIZED": .sessionExpired
     case "TOO_MANY_REQUESTS": .tooManyRequests
-    case "RESET_CODE_INVALID": .resetCodeInvalid
-    case "GOOGLE_UNAVAILABLE": .googleUnavailable
-    case "GOOGLE_INVALID": .googleInvalid
-    case "GOOGLE_CHALLENGE_EXPIRED": .googleChallengeExpired
-    case "GOOGLE_LINK_REQUIRED": .googleLinkRequired
-    case "GOOGLE_IDENTITY_CONFLICT": .googleIdentityConflict
+    // atm-auth-api
+    case "invalid_credentials": .invalidCredentials
+    case "email_taken": .emailAlreadyRegistered
+    case "invalid_refresh_token": .sessionExpired
+    case "too_many_attempts": .tooManyRequests
+    case "reset_code_invalid": .resetCodeInvalid
+    case "no_access": .noAccess
+    case "signup_closed": .signupClosed
+    case "google_unavailable": .googleUnavailable
+    case "invalid_google_credential": .googleInvalid
+    case "google_challenge_expired": .googleChallengeExpired
+    case "password_required_to_link": .googleLinkRequired
+    case "google_identity_conflict": .googleIdentityConflict
+    case "google_not_linked": .googleNotLinked
+    case "account_cleanup_failed": .accountCleanupFailed
     default: .unknown
     }
 }
@@ -129,12 +141,19 @@ struct ApiResponse {
 
     /// A 401 for a wrong password (deleting the account), not for the session: renewing would not
     /// help, and repeating the request would count the wrong password twice.
-    var isWrongPassword: Bool { status == 401 && errorCode == "INVALID_CREDENTIALS" }
+    var isWrongPassword: Bool { status == 401 && errorCode == "invalid_credentials" }
 
     /// The error of the response as a `DataException`.
     func toDataException() -> DataException {
         let body = errorBody
         let code = body?.code ?? ""
+        // atm-auth-api field problems come as the code itself.
+        switch code {
+        case "invalid_email": return DataException(.unknown, invalid: .emailInvalid)
+        case "invalid_full_name": return DataException(.unknown, invalid: .nameRequired)
+        case "weak_password": return DataException(.unknown, invalid: .passwordTooShort)
+        default: break
+        }
         if code == "VALIDATION_FAILED" {
             // The first field problem the app knows how to tell; the API sends them in the app's order.
             let invalid = body?.details?.lazy
@@ -152,7 +171,16 @@ struct ApiResponse {
         return self
     }
 
-    /// The `data` of a successful response.
+    /// The body of a successful atm-auth-api response (flat JSON, no `data` envelope).
+    func decodeFlat<T: Decodable>(_ type: T.Type) throws -> T {
+        do {
+            return try ApiJson.decoder.decode(T.self, from: data)
+        } catch {
+            throw DataException(.unknown)
+        }
+    }
+
+    /// The `data` of a successful atm-orbita-api response.
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
         do {
             return try ApiJson.decoder.decode(DataEnvelope<T>.self, from: data).data
@@ -162,6 +190,7 @@ struct ApiResponse {
     }
 }
 
+/// A client of one API (see the top of the file).
 final class ApiClient {
     let baseURL: URL
     private let session: URLSession

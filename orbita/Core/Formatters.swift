@@ -45,13 +45,6 @@ func currencyInfo(_ code: String) -> CurrencyInfo {
 
 func currencySymbol(_ currency: String) -> String { currencyInfo(currency).symbol }
 
-/// The currency offered on sign-up: the one of the phone's region when the app supports it,
-/// soles otherwise.
-func defaultCurrencyFor(_ locale: Locale = .current) -> String {
-    let regional = locale.currency?.identifier
-    return supportedCurrencies.first { $0.code == regional }?.code ?? PEN
-}
-
 extension Decimal {
     /// Rounds half up (away from zero on ties) to [scale] decimals.
     func rounded(scale: Int) -> Decimal {
