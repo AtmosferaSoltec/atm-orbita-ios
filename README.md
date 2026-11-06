@@ -8,7 +8,7 @@ App **iOS nativa** (Swift + SwiftUI) de Orbita: ingresos y egresos personales po
 
 ## Ramas
 
-Todo el trabajo va en `develop`. `main` guarda lo que ya funciona; pasar a `main` lo decide el usuario. Commits en Conventional Commits, en inglés.
+Solo existe la rama `main`; la rama `develop` se eliminó el 4 nov 2026 y no se vuelve a crear. Todo el trabajo va en `main`; antes de subir a `main`, pide confirmación al usuario si él no lo pidió. Commits en Conventional Commits, en inglés.
 
 ## Estado
 
